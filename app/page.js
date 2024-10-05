@@ -1,101 +1,163 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { initialFoods } from './components/foods'; // Adjust the path if necessary
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [foods, setFoods] = useState([]);
+  const [selectedFood, setSelectedFood] = useState(null); // To track the selected food
+  const [isDragging, setIsDragging] = useState(false); // To handle dragging
+  const [result, setResult] = useState(''); // For displaying feedback
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 }); // Track mouse position
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+  const robotRef = useRef(null); // Reference to the robot for bounding box calculation
+
+  // On component mount, select 3 unique random foods to display
+  useEffect(() => {
+    const shuffledFoods = [...initialFoods].sort(() => 0.5 - Math.random());
+    const selectedFoods = shuffledFoods.slice(0, 3);
+    setFoods(selectedFoods);
+  }, []);
+
+  // Update mouse position when the user moves the mouse
+  const handleMouseMove = useCallback((e) => {
+    setMousePos({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Handle global click events to check for dropping
+  const handleGlobalClick = useCallback(() => {
+    if (selectedFood && isDragging) {
+      console.log('Second click detected: dropping food');
+
+      setIsDragging(false); // Disable dragging on second click
+
+      // Get robot's bounding box to detect if food is dropped on the robot
+      const robotRect = robotRef.current.getBoundingClientRect();
+      console.log('Robot bounding box:', robotRect);
+      console.log('Mouse position at drop:', mousePos);
+
+      // Check if the food was dropped on the robot
+      if (
+        mousePos.x > robotRect.left &&
+        mousePos.x < robotRect.right &&
+        mousePos.y > robotRect.top &&
+        mousePos.y < robotRect.bottom
+      ) {
+        console.log('Food dropped on the robot');
+        setResult(
+          selectedFood.isGood
+            ? `${selectedFood.name} is good for the body!`
+            : `${selectedFood.name} is not good for the body!`
+        );
+
+        // Replace the dropped food with a new random one not currently in 'foods'
+        const remainingFoods = initialFoods.filter(
+          (f) => !foods.some((food) => food.id === f.id)
+        );
+
+        let newFood;
+
+        if (remainingFoods.length > 0) {
+          newFood = remainingFoods[Math.floor(Math.random() * remainingFoods.length)];
+          const newFoods = foods.map((f) =>
+            f.id === selectedFood.id ? newFood : f
+          );
+          setFoods(newFoods);
+        } else {
+          // All foods have been used; reshuffle and select new foods
+          const shuffledFoods = [...initialFoods].sort(() => 0.5 - Math.random());
+          const selectedFoods = shuffledFoods.slice(0, 3);
+          setFoods(selectedFoods);
+        }
+      } else {
+        console.log('Food was not dropped on the robot');
+        setResult('Oh no, you dropped the food!');
+      }
+
+      setSelectedFood(null); // Clear selected food after dropping
+    }
+  }, [selectedFood, isDragging, mousePos, foods]);
+
+  // Handle food selection
+  const handleFoodClick = (e, food) => {
+    e.stopPropagation(); // Prevent the click event from reaching handleGlobalClick
+    if (!selectedFood) {
+      console.log('First click: selecting food', food);
+      setSelectedFood(food); // Select food on first click
+      setIsDragging(true); // Enable dragging
+    }
+  };
+
+  // Attach event listener to track mouse movements and global clicks
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('click', handleGlobalClick);
+      console.log('Dragging started');
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('click', handleGlobalClick);
+      console.log('Dragging stopped');
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('click', handleGlobalClick);
+    };
+  }, [isDragging, handleMouseMove, handleGlobalClick]);
+
+  return (
+    <div className="flex flex-col items-center justify-center h-screen relative">
+      <h1 className="text-4xl font-bold mb-6">Good for the Body</h1>
+
+      {/* Robot Image */}
+      <div className="mb-8 relative">
+        <img
+          src="/robot.png"
+          alt="Robot"
+          id="robot"
+          className="w-48 h-64 mx-auto"
+          ref={robotRef} // Reference to the robot image
+        />
+      </div>
+
+      {/* Display the Result */}
+      <div className="text-2xl mb-6">
+        {result && <p>{result}</p>}
+      </div>
+
+      {/* Food Options */}
+      <div className="flex space-x-4">
+        {foods.map((food) => (
+          <img
+            key={food.id}
+            src={food.src}
+            alt={food.name}
+            className="w-20 h-20 cursor-pointer"
+            onClick={(e) => handleFoodClick(e, food)}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        ))}
+      </div>
+
+      {/* Dragging Food */}
+      {selectedFood && isDragging && (
+        <img
+          src={selectedFood.src}
+          alt={selectedFood.name}
+          className="absolute w-20 h-20 pointer-events-none"
+          style={{
+            top: mousePos.y - 40, // Offset to center the image on the cursor
+            left: mousePos.x - 40,
+          }}
+        />
+      )}
+
+      {/* Instructions */}
+      <p className="text-lg mt-4">
+        {selectedFood
+          ? 'Click anywhere to drop the food!'
+          : 'Click on a food to select it and drag it to the robot.'}
+      </p>
     </div>
   );
 }
